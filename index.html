@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>LAB TERMINAL</title>
+<style>
+body {margin:0;background:#05080d;color:#e6f1ff;font-family:"Consolas",monospace;}
+.container{display:grid;grid-template-columns:2fr 1fr;height:100vh;}
+.panel{border:1px solid #1f3b5a;padding:15px;box-sizing:border-box;display:flex;flex-direction:column;min-height:0;}
+.header{font-size:22px;letter-spacing:2px;margin-bottom:10px;color:#7dd3ff;}
+.log{background:#02050a;flex:1;min-height:0;overflow-y:auto;padding:10px;border:1px solid #123;margin-bottom:10px;font-size:16px;line-height:1.6;}
+.input-area{margin-top:10px;}
+input{width:100%;background:black;color:#7dd3ff;border:1px solid #1f3b5a;padding:8px;font-size:16px;box-sizing:border-box;}
+input:disabled{background:#111;color:#555;border:1px solid #400;cursor:not-allowed;}
+button{margin-top:8px;width:100%;background:#0b1c2d;color:#7dd3ff;border:1px solid #1f3b5a;padding:8px;cursor:pointer;font-size:16px;}
+button:hover{background:#102b45;}
+button:disabled{background:#111;color:#555;border:1px solid #400;cursor:not-allowed;}
+.locked-indicator{text-align:center;font-size:14px;color:#ff4d4d;margin-top:4px;letter-spacing:1px;animation:alertFlash 1s infinite;padding:4px;}
+.status{font-size:24px;margin-top:6px;font-weight:bold;text-align:center;letter-spacing:1px;}
+.timer{font-size:52px;color:#ff6b6b;font-weight:bold;text-align:center;letter-spacing:3px;}
+.monitor-frame{
+  width:300px; height:300px;
+  margin:10px auto;
+  border:1px solid #1f3b5a;
+  position:relative;
+  overflow:hidden;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.circle{
+  width:200px; height:200px;
+  border-radius:50%;
+  border:3px solid #ff6b6b;
+  position:absolute;
+  transition:width 1s ease, height 1s ease, left 0.8s ease, top 0.8s ease;
+  background:rgba(255,0,0,0.1);
+}
+.lab{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#7dd3ff;font-size:13px;line-height:1.1;font-weight:bold;border:2px solid #1f3b5a;padding:0;background:rgba(0,0,0,0.7);z-index:20;text-align:center;box-sizing:border-box;display:flex;align-items:center;justify-content:center;}
+.device-marker{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:16px;height:16px;background:#ff6b6b;border:2px solid #fff;border-radius:50%;
+  box-shadow:0 0 10px #ff6b6b,0 0 20px #ff0000;z-index:10;
+  animation:deviceBlink 1.5s infinite;
+  transition:left 0.8s ease, top 0.8s ease;
+}
+.device-marker::before{
+  content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:6px;height:6px;background:#fff;border-radius:50%;
+}
+@keyframes deviceBlink{
+  0%{opacity:1;box-shadow:0 0 10px #ff6b6b,0 0 20px #ff0000;}
+  50%{opacity:0.3;box-shadow:0 0 5px #ff6b6b,0 0 10px #ff0000;}
+  100%{opacity:1;box-shadow:0 0 10px #ff6b6b,0 0 20px #ff0000;}
+}
+.radius-label{text-align:center;color:#ffb3b3;font-size:28px;font-weight:bold;margin-top:6px;}
+.download-box{
+  margin-top:8px;padding:10px;border:1px solid #1f3b5a;background:#020a05;
+}
+.download-box-label{font-size:12px;color:#7dd3ff;letter-spacing:1px;margin-bottom:4px;}
+.download-ready{color:#7dd3ff;font-size:15px;font-weight:bold;text-align:center;}
+.download-complete{color:#00ff99;font-size:15px;font-weight:bold;text-align:center;animation:glowGreen 1.5s infinite;}
+.download-idle{color:#444;font-size:14px;text-align:center;}
+@keyframes glowGreen{
+  0%{text-shadow:0 0 5px #00ff99;}50%{text-shadow:0 0 15px #00ff99;}100%{text-shadow:0 0 5px #00ff99;}
+}
+.info-box{margin-top:8px;padding:12px;border:1px solid #1f3b5a;background:#02050a;}
+@keyframes alertFlash{0%{background:#400;}50%{background:#800;}100%{background:#400;}}
+@keyframes alertFlashGreen{0%{box-shadow:0 0 10px #00ff99;}50%{box-shadow:0 0 25px #00ff99;}100%{box-shadow:0 0 10px #00ff99;}}
+.alert-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(120,0,0,0.85);display:none;align-items:center;justify-content:center;z-index:9999;}
+.alert-box{border:3px solid #ff4d4d;padding:40px;background:black;color:#ff4d4d;font-size:28px;text-align:center;max-width:80%;}
+</style>
+</head>
+<body>
+<div class="container">
+  <!-- 左パネル：コマンド＋ログ -->
+  <div class="panel">
+    <div class="header">LAB TERMINAL :: COMMAND</div>
+    <div class="log" id="log"></div>
+    <div style="margin-top:auto;">
+      <div class="input-area">
+        <input id="commandInput" placeholder="COMMAND INPUT" onkeydown="if(event.key==='Enter'){playClickSound();sendCommand();}" />
+        <div id="lockIndicator" class="locked-indicator" style="display:none;">⛔ COMMAND INPUT LOCKED</div>
+        <button id="cmdBtn" onclick="playClickSound();sendCommand()">EXECUTE</button>
+      </div>
+      <div class="input-area">
+        <input id="passwordInput" placeholder="PASSWORD / ANSWER INPUT" onkeydown="if(event.key==='Enter'){playClickSound();sendPassword();}" />
+        <button onclick="playClickSound();sendPassword()">AUTH / SUBMIT</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右パネル：ステータス -->
+  <div class="panel">
+    <div class="header">消失装置 STATUS</div>
+
+    <!-- システム作動後に表示 -->
+    <div id="devicePanel" style="display:none;">
+      <div class="timer" id="timer">30:00</div>
+      <div class="monitor-frame">
+        <div class="circle" id="circle"></div>
+        <div class="device-marker" id="deviceMarker"></div>
+        <div class="lab" id="labBox">LAB<br>2×4</div>
+      </div>
+      <div class="radius-label">消失半径: <span id="radius">9</span> m</div>
+      <div class="status" id="statusText">消失装置 起動中</div>
+    </div>
+
+    <!-- システム作動前 -->
+    <div id="hiddenInfo" style="text-align:center;color:#666;margin-top:40px;font-size:16px;">
+      対侵入者システム 未作動<br>消失装置情報 非表示
+    </div>
+
+    <!-- ダウンロード＋情報取得率（常時表示） -->
+    <div class="info-box" style="margin-top:auto;">
+      <div style="font-size:13px;color:#7dd3ff;letter-spacing:1px;margin-bottom:4px;">▶ DOWNLOAD STATUS</div>
+      <div id="downloadStatus" class="download-idle" style="margin-bottom:10px;">-- 待機中 --</div>
+      <div style="border-top:1px solid #1f3b5a;padding-top:8px;">
+        <div style="font-size:13px;color:#7dd3ff;margin-bottom:4px;letter-spacing:1px;">情報取得率</div>
+        <div style="font-size:32px;color:#00ff99;font-weight:bold;text-align:center;"><span id="infoRate">0</span>%</div>
+        <div style="font-size:13px;color:#555;text-align:center;margin-top:4px;">解読済み: <span id="solvedCount">0</span> / 25</div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="alert" class="alert-overlay"><div class="alert-box" id="alertBox"></div></div>
+
+<script>
+// ==========================================
+// 設定（番号が決まったら更新してください）
+// ==========================================
+
+// 資料番号（6桁・未確定のため仮置き）
+const RESOURCE_NUMBERS = {
+  'doc3': '000003',  // 資料3の番号
+  'doc4': '000004',  // 資料4の番号
+};
+
+// 本1〜4に対応するサブミッション問題番号（未確定のため仮置き）
+const BOOK_SUBMISSION_NUMBERS = {
+  book1: 'Q01',
+  book2: 'Q02',
+  book3: 'Q03',
+  book4: 'Q04',
+};
+
+// コマンドロック解除パスワード（仮置き・後で変更）
+const UNLOCK_PASSWORD = 'unlock123';
+
+// サブミッション答えリスト（仮置き・後で変更）
+const submissionAnswers = [
+  'answer01','answer02','answer03','answer04','answer05',
+  'answer06','answer07','answer08','answer09','answer10',
+  'answer11','answer12','answer13','answer14','answer15',
+  'answer16','answer17','answer18','answer19','answer20',
+  'answer21','answer22','answer23','answer24','answer25'
+];
+
+// ==========================================
+// ゲーム状態
+// ==========================================
+let time = 1800;
+const MAX_RADIUS = 15;
+const MIN_RADIUS = 0;
+let radius = 9;
+let timerStarted = false;
+let timerInterval;
+let intrusionTriggered = false;
+let commandLocked = false;
+let deviceRunning = false;
+let vaultOpen = false;
+let solvedAnswers = new Set();
+let infoRate = 0;
+
+// 装置位置（フレーム内%）
+let deviceX = 50;
+let deviceY = 50;
+
+// ダウンロード管理
+let downloadReadyResource = null;  // パスワード欄に入力された資料番号
+let downloadedResource = null;     // ダウンロード済みの資料番号
+let downloadComplete = false;      // ダウンロード完了フラグ
+
+// ラボ内で感知可能な資料（資料4は最初からラボ内に存在）
+let inLabResources = new Set([RESOURCE_NUMBERS['doc4']]);
+
+// ==========================================
+// サウンド
+// ==========================================
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function beep(freq, type, vol, dur){
+  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.connect(g); g.connect(audioCtx.destination);
+  o.frequency.value=freq; o.type=type;
+  g.gain.setValueAtTime(vol, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime+dur);
+  o.start(); o.stop(audioCtx.currentTime+dur);
+}
+
+function playClickSound(){ beep(800,'square',1.0,0.05); }
+function playErrorSound(){ beep(200,'sawtooth',1.0,0.2); }
+function playWarningSound(){ beep(440,'triangle',1.0,0.15); }
+function playInfoGetSound(){ beep(900,'sine',1.0,0.15); }
+function playActivateSound(){
+  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.connect(g); g.connect(audioCtx.destination);
+  o.frequency.setValueAtTime(100, audioCtx.currentTime);
+  o.frequency.exponentialRampToValueAtTime(600, audioCtx.currentTime+0.5);
+  o.type='sawtooth';
+  g.gain.setValueAtTime(1.0, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime+0.5);
+  o.start(); o.stop(audioCtx.currentTime+0.5);
+}
+function playDeactivateSound(){
+  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.connect(g); g.connect(audioCtx.destination);
+  o.frequency.setValueAtTime(600, audioCtx.currentTime);
+  o.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime+0.4);
+  o.type='sawtooth';
+  g.gain.setValueAtTime(1.0, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime+0.4);
+  o.start(); o.stop(audioCtx.currentTime+0.4);
+}
+function playSuccessSound(){
+  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.connect(g); g.connect(audioCtx.destination);
+  o.frequency.setValueAtTime(523, audioCtx.currentTime);
+  o.frequency.setValueAtTime(659, audioCtx.currentTime+0.1);
+  o.frequency.setValueAtTime(784, audioCtx.currentTime+0.2);
+  o.type='sine';
+  g.gain.setValueAtTime(1.0, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime+0.3);
+  o.start(); o.stop(audioCtx.currentTime+0.3);
+}
+function playLogSound(){
+  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.connect(g); g.connect(audioCtx.destination);
+  o.frequency.value=1000+Math.random()*400; o.type='square';
+  g.gain.setValueAtTime(0.6, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime+0.03);
+  o.start(); o.stop(audioCtx.currentTime+0.03);
+}
+function playSirenSound(){
+  const now=audioCtx.currentTime;
+  const o1=audioCtx.createOscillator(), g1=audioCtx.createGain();
+  o1.connect(g1); g1.connect(audioCtx.destination); o1.type='sawtooth';
+  o1.frequency.setValueAtTime(300,now);
+  o1.frequency.linearRampToValueAtTime(900,now+0.3);
+  o1.frequency.setValueAtTime(300,now+0.3);
+  o1.frequency.linearRampToValueAtTime(900,now+0.6);
+  o1.frequency.setValueAtTime(300,now+0.6);
+  o1.frequency.linearRampToValueAtTime(900,now+0.9);
+  g1.gain.setValueAtTime(1.0,now);
+  g1.gain.exponentialRampToValueAtTime(0.001,now+1.2);
+  o1.start(now); o1.stop(now+1.2);
+  const o2=audioCtx.createOscillator(), g2=audioCtx.createGain();
+  o2.connect(g2); g2.connect(audioCtx.destination);
+  o2.type='sine'; o2.frequency.value=80;
+  [0,0.3,0.6,0.9].forEach(t=>{
+    g2.gain.setValueAtTime(0,now+t);
+    g2.gain.setValueAtTime(1.0,now+t+0.05);
+    g2.gain.setValueAtTime(0,now+t+0.15);
+  });
+  o2.start(now); o2.stop(now+1.2);
+}
+
+// ==========================================
+// UI更新
+// ==========================================
+function log(msg){
+  playLogSound();
+  const box=document.getElementById('log');
+  box.innerHTML+=msg+'<br>';
+  box.scrollTop=box.scrollHeight;
+}
+function wait(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+function updateTimer(){
+  const m=String(Math.floor(time/60)).padStart(2,'0');
+  const s=String(time%60).padStart(2,'0');
+  document.getElementById('timer').innerText=`${m}:${s}`;
+}
+
+function startTimer(){
+  if(timerStarted) return;
+  timerStarted=true;
+  timerInterval=setInterval(async ()=>{
+    time--;
+    if(time<=0){
+      clearInterval(timerInterval);
+      log('>> [消失指示] 発令');
+      
+      // END判定
+      if(deviceRunning && deviceX===50 && deviceY===50){
+        // END1「消失」: 装置が起動中 かつ 中央位置
+        document.getElementById('statusText').innerText='消失実行';
+        log('SYSTEM :: 消失装置 作動 → 消失実行');
+        await showTempMessage('!! 消失実行 !!','ラボごと消失 / GAME OVER','red',99999);
+      } else if(deviceRunning && (deviceX!==50 || deviceY!==50) && radius===3){
+        // END3「脱出」: 装置が起動中 かつ 中央以外 かつ 半径3m
+        document.getElementById('statusText').innerText='脱出成功';
+        log('SYSTEM :: ラボの一部が消失 → 脱出口が開く');
+        await showTempMessage('脱出成功 !!','ラボの一部が消失 / 脱出口が開いた！','green',99999);
+      } else {
+        // END2「閉じ込め」: 装置が停止中 または 半径が3mではない
+        document.getElementById('statusText').innerText='閉じ込められた';
+        log('SYSTEM :: 脱出失敗 → ラボ内に閉じ込められた');
+        await showTempMessage('閉じ込め','脱出失敗 / ラボ内に閉じ込められた','red',99999);
+      }
+    }
+    updateTimer();
+  },1000);
+}
+
+function setCommandLock(state){
+  const inp=document.getElementById('commandInput');
+  const btn=document.getElementById('cmdBtn');
+  const ind=document.getElementById('lockIndicator');
+  commandLocked=state;
+  if(state){ inp.disabled=true; btn.disabled=true; ind.style.display='block'; inp.value=''; }
+  else { inp.disabled=false; btn.disabled=false; ind.style.display='none'; }
+}
+
+function updateMonitor(){
+  document.getElementById('radius').innerText=radius;
+  const circle=document.getElementById('circle');
+  const lab=document.getElementById('labBox');
+  const pxPerMeter=300/20; // フレーム420px = 半径10m×2（半径10mがぎりぎり枠内）
+
+  // ラボのサイズをスケールに合わせて描画（4m×2m）
+  lab.style.width=(4*pxPerMeter*1.2)+'px';   // ラボ枠を少し大きめに
+  lab.style.height=(2*pxPerMeter*1.2)+'px';
+  lab.style.display='flex';
+  lab.style.alignItems='center';
+  lab.style.justifyContent='center';
+
+  // 円の位置をマーカーに合わせる
+  circle.style.left=deviceX+'%';
+  circle.style.top=deviceY+'%';
+  circle.style.transform='translate(-50%,-50%)';
+
+  if(!deviceRunning){ circle.style.display='none'; }
+  else {
+    circle.style.display='block';
+    const size=radius*2*pxPerMeter;
+    circle.style.width=size+'px';
+    circle.style.height=size+'px';
+  }
+}
+
+function moveDevice(x, y){
+  deviceX=x; deviceY=y;
+  const marker=document.getElementById('deviceMarker');
+  const circle=document.getElementById('circle');
+  // マーカー位置を更新
+  marker.style.left=x+'%';
+  marker.style.top=y+'%';
+  marker.style.transform='translate(-50%,-50%)';
+  // 円もマーカーと同じ位置に移動
+  circle.style.left=x+'%';
+  circle.style.top=y+'%';
+  circle.style.transform='translate(-50%,-50%)';
+}
+
+function updateDownloadStatus(){
+  const el=document.getElementById('downloadStatus');
+  if(downloadComplete && downloadedResource){
+    el.className='download-complete';
+    el.innerText=`✔ DL完了: [${downloadedResource}]`;
+  } else if(downloadReadyResource){
+    el.className='download-ready';
+    el.innerText=`▶ 準備中: [${downloadReadyResource}]`;
+  } else {
+    el.className='download-idle';
+    el.innerText='-- 待機中 --';
+  }
+}
+
+function updateInfoRate(){
+  document.getElementById('infoRate').innerText=infoRate;
+  document.getElementById('solvedCount').innerText=solvedAnswers.size;
+}
+
+async function showTempMessage(title,message,type='red',duration=2000){
+  if(type==='red') playErrorSound();
+  if(type==='yellow') playWarningSound();
+  if(type==='green') playSuccessSound();
+  return new Promise(resolve=>{
+    const overlay=document.getElementById('alert');
+    const box=document.getElementById('alertBox');
+    let color='#ff4d4d', bg='rgba(80,0,0,0.92)', shadow='#ff0000', anim='alertFlash 1s infinite';
+    if(type==='yellow'){ color='#ffd84d'; bg='rgba(0,0,0,0.85)'; shadow='#ffea00'; anim='none'; }
+    if(type==='blue')  { color='#4da6ff'; bg='rgba(0,0,0,0.85)'; shadow='#3399ff'; anim='none'; }
+    if(type==='green') { color='#4dff88'; bg='rgba(0,60,30,0.92)'; shadow='#00ff99'; anim='alertFlashGreen 1s infinite'; }
+    overlay.style.background=bg; overlay.style.animation=anim;
+    box.style.border=`3px solid ${color}`; box.style.color=color; box.style.boxShadow=`0 0 30px ${shadow}`;
+    box.innerHTML=`<div style="font-size:36px;font-weight:bold;">${title}</div><div style="margin-top:12px;font-size:20px;white-space:pre-line;">${message}</div>`;
+    overlay.style.display='flex';
+    setTimeout(()=>{ overlay.style.display='none'; overlay.style.animation='none'; resolve(); }, duration);
+  });
+}
+
+async function displayLogsSequentially(arr,delay=200){
+  for(const l of arr){ log(l); await wait(delay); }
+}
+
+// ==========================================
+// スキップ関数（初期演出をスキップして即座にゲーム開始状態にする）
+// ==========================================
+function skipIntro(){
+  if(intrusionTriggered) return; // 既にトリガー済みなら何もしない
+  intrusionTriggered=true;
+  document.getElementById('log').innerHTML='';
+  setCommandLock(true);
+  const logs=[
+    'SYSTEM :: 対侵入者システム 作動',
+    'SYSTEM :: 消失装置 起動',
+    'SYSTEM :: ラボ 封鎖完了',
+    'SYSTEM :: 消失プロセス 開始',
+    'SYSTEM :: 消失半径 初期値 = 9m',
+    'SYSTEM :: 30分後 [消失指示] 送信予定',
+  ];
+  logs.forEach(l=>log(l));
+  document.getElementById('devicePanel').style.display='block';
+  document.getElementById('hiddenInfo').style.display='none';
+  document.getElementById('statusText').innerText='消失装置 起動中';
+  deviceRunning=true;
+  updateMonitor();
+  startTimer();
+}
+
+// ==========================================
+// コマンド処理
+// ==========================================
+async function sendCommand(){
+  const input=document.getElementById('commandInput');
+  const cmd=input.value.trim();
+  if(!cmd) return;
+
+  // ── 隠しコマンド：スキップ（ロック前でも使用可能）──
+  if(cmd==='すきっぷ'){
+    skipIntro();
+    input.value='';
+    return;
+  }
+
+  if(commandLocked){
+    log('SYSTEM :: コマンド入力ロック中');
+    await showTempMessage('SYSTEM LOCKED','対侵入者システム作動中','red');
+    return;
+  }
+
+  log(`SYSTEM :: 「${cmd}」 入力確認`);
+  await showTempMessage('COMMAND','解析中: '+cmd,'yellow',800);
+
+  const known=['こいぬ','こたつ','しまね','しまうま','うみ','とりい'];
+  if(!known.includes(cmd) && cmd!=='あ' && cmd!=='お' && cmd!=='すきっぷ' && !/^\d{4}$/.test(cmd)){
+    log('SYSTEM :: 該当コマンドなし');
+    input.value='';
+    await showTempMessage('COMMAND ERROR','コマンドが存在しません','red');
+    return;
+  }
+
+  // ── こいぬ：金庫 開放 ──
+  if(cmd==='こいぬ'){
+    if(!intrusionTriggered){
+      // 初回：対侵入者システムが妨害して金庫は開かない
+      intrusionTriggered=true;
+      log('SYSTEM :: 金庫 開放 試行...');
+      await wait(3000);
+      log('SECURITY :: 未登録コマンド使用を検知');
+      await showTempMessage('!! WARNING !!','未登録コマンド使用を検知','red',1500);
+      await displayLogsSequentially([
+        'SECURITY :: コマンド送信元 解析中...',
+        'SECURITY :: 認証ID 不一致',
+        'SECURITY :: 登録ユーザー照合 失敗',
+        'SECURITY :: 生体認証 失敗',
+        'SECURITY :: 権限レベル = NONE',
+        'SECURITY :: アクセス権限 なし',
+        'SECURITY :: 侵入経路 追跡中...',
+        'SECURITY :: 脅威レベル = 最高',
+        'SECURITY :: 不正侵入フラグ = TRUE',
+        'SECURITY :: 対侵入者プロトコル 起動',
+        'SECURITY :: 金庫 開放 妨害',
+      ],300);
+      const delLogs=Array(30).fill('SYSTEM :: ログを消去します');
+      await displayLogsSequentially(delLogs,40);
+      document.getElementById('log').innerHTML='';
+      playSirenSound();
+      await showTempMessage('INTRUSION ALERT','対侵入者システム 作動','red',2000);
+      setCommandLock(true);
+      await displayLogsSequentially([
+        'SYSTEM :: 対侵入者システム 作動',
+        'SYSTEM :: 消失装置 起動シーケンス 開始',
+        'SYSTEM :: ラボ 即時封鎖',
+        'SYSTEM STATUS :: ラボ 閉鎖完了',
+        'SYSTEM :: 消失プロセス 開始',
+        'SYSTEM :: 消失半径を設定 初期値 = 9m',
+        'SYSTEM STATUS :: 消失装置 起動完了',
+        'SYSTEM :: 30分後 [消失指示] 送信予定',
+        'SYSTEM STATUS :: 金庫開放 停止',
+        'SYSTEM STATUS :: コマンド入力欄 ロック',
+        'SYSTEM :: 警告：脱出不可能',
+      ],300);
+      document.getElementById('devicePanel').style.display='block';
+      document.getElementById('hiddenInfo').style.display='none';
+      document.getElementById('statusText').innerText='消失装置 起動中';
+      deviceRunning=true;
+      updateMonitor();
+      startTimer();
+      await showTempMessage('消失装置 起動','消失まで 30:00','red',2500);
+    } else {
+      // 2回目以降（コマンドロック解除後）：金庫開放
+      if(vaultOpen){
+        log('SYSTEM :: 金庫 既に開放中');
+        await showTempMessage('金庫','すでに開放されています','yellow');
+      } else {
+        vaultOpen=true;
+        log('SYSTEM :: 金庫 開放');
+        await showTempMessage('金庫 開放','アクセス許可','yellow');
+      }
+    }
+  }
+
+  // ── こたつ：金庫 閉鎖 ──
+  if(cmd==='こたつ'){
+    if(!vaultOpen){
+      log('SYSTEM :: 金庫 既に閉鎖中');
+      await showTempMessage('金庫','すでに閉鎖されています','yellow');
+    } else {
+      vaultOpen=false;
+      // 金庫を閉じると、ラボ内で感知されていた全資料が感知リストから除外される
+      // （金庫の中に入れられたとみなす）
+      if(inLabResources.size > 0){
+        inLabResources.clear();
+        log('SYSTEM :: 金庫 閉鎖 :: ラボ内資料 感知リスト クリア');
+      } else {
+        log('SYSTEM :: 金庫 閉鎖');
+      }
+      await showTempMessage('金庫 閉鎖','アクセス遮断','yellow');
+    }
+  }
+
+  // ── しまね：ダウンロード ──
+  if(cmd==='しまね'){
+    if(!downloadReadyResource){
+      log('SYSTEM :: ダウンロード対象 未指定');
+      await showTempMessage('DOWNLOAD ERROR','資料番号をパスワード欄に入力してください','red');
+    } else {
+      downloadedResource=downloadReadyResource;
+      downloadComplete=true;
+      updateDownloadStatus();
+      log(`SYSTEM :: 資料番号 [${downloadedResource}] ダウンロード完了`);
+
+      // 資料3のダウンロード時：本1〜4のサブミッション問題番号を表示
+      if(downloadedResource===RESOURCE_NUMBERS['doc3']){
+        await showTempMessage('DOWNLOAD COMPLETE','ダウンロード完了','green',1500);
+        await displayLogsSequentially([
+          'SYSTEM :: アップロードに必要な認証情報:',
+          `SYSTEM :: 本1 対応問題番号 → ${BOOK_SUBMISSION_NUMBERS.book1}`,
+          `SYSTEM :: 本2 対応問題番号 → ${BOOK_SUBMISSION_NUMBERS.book2}`,
+          `SYSTEM :: 本3 対応問題番号 → ${BOOK_SUBMISSION_NUMBERS.book3}`,
+          `SYSTEM :: 本4 対応問題番号 → ${BOOK_SUBMISSION_NUMBERS.book4}`,
+          'SYSTEM :: ※ アップロードには 迷路のかけら 4枚 が必要',
+        ],300);
+      } else {
+        await showTempMessage('DOWNLOAD COMPLETE','ダウンロード完了','green');
+        log('SYSTEM :: ダウンロード完了');
+      }
+    }
+  }
+
+  // ── しまうま：アップロード（印刷）──
+  if(cmd==='しまうま'){
+    if(!downloadComplete || !downloadedResource){
+      log('SYSTEM :: ダウンロード済み資料なし');
+      await showTempMessage('UPLOAD ERROR','先にダウンロードを行ってください','red');
+    } else if(inLabResources.has(downloadedResource)){
+      log(`SYSTEM :: ERROR :: 資料 [${downloadedResource}] は既にラボ内に存在します`);
+      await showTempMessage('UPLOAD ERROR','この資料はすでにラボ内に存在します\nアップロード不可','red',3000);
+    } else {
+      log(`SYSTEM :: 資料 [${downloadedResource}] アップロード（印刷）完了`);
+      await showTempMessage('UPLOAD COMPLETE','印刷完了\n資料を受け取ってください','green',2500);
+      // ダウンロード完了表示はそのまま維持（リセットしない）
+    }
+  }
+
+  // ── うみ：消失半径 -3m ──
+  if(cmd==='うみ'){
+    if(!deviceRunning){
+      log('SYSTEM :: 消失装置 停止中');
+      await showTempMessage('SYSTEM INFO','消失装置は停止中です','yellow');
+    } else {
+      const prev=radius;
+      radius=Math.max(MIN_RADIUS, radius-3);
+      updateMonitor();
+      log(`SYSTEM :: 消失半径 ${prev}m → ${radius}m`);
+      if(radius===0){
+        log('SYSTEM :: 消失半径 0m 到達');
+        // 円のtransition（1s）が終わるのを待ってから停止処理
+        await wait(1200);
+        deviceRunning=false;
+        updateMonitor();
+        playDeactivateSound();
+        document.getElementById('statusText').innerText='停止中';
+        log('SYSTEM :: 消失装置 自動停止');
+        await showTempMessage('装置 自動停止','消失装置 自動停止','green',3000);
+      } else {
+        await showTempMessage('RADIUS -3m',`${prev}m → ${radius}m`,'yellow');
+      }
+    }
+  }
+
+  // ── とりい：消失半径 +3m ──
+  if(cmd==='とりい'){
+    const prev=radius;
+    radius=Math.min(MAX_RADIUS, radius+3);
+    updateMonitor();
+    if(!deviceRunning){
+      // 装置が停止中の場合は再起動
+      // ①再起動表示
+      playActivateSound();
+      document.getElementById('statusText').innerText='消失装置 起動中';
+      log('SYSTEM :: 消失装置 再起動');
+      await showTempMessage('装置 再起動','消失装置 再起動','yellow',1500);
+      // ②拡大表示
+      log(`SYSTEM :: 消失半径 0m → ${radius}m`);
+      await showTempMessage('RADIUS 拡大',`0m → ${radius}m`,'yellow',1000);
+      // ③円が0mから滑らかに拡大
+      deviceRunning=true;
+      const targetRadius=radius;
+      radius=0;
+      updateMonitor();
+      await wait(50);
+      radius=targetRadius;
+      updateMonitor();
+      await wait(1200);
+    } else {
+      if(prev===radius){
+        log('SYSTEM :: 消失半径 上限到達 (15m)');
+        await showTempMessage('RADIUS LIMIT','これ以上拡張できません','yellow');
+      } else {
+        log(`SYSTEM :: 消失半径 ${prev}m → ${radius}m`);
+        await showTempMessage('RADIUS +3m',`${prev}m → ${radius}m`,'yellow');
+      }
+    }
+  }
+
+  // ── 隠しコマンド：装置移動 ──
+  if(cmd==='あ' || cmd==='お'){
+    const x = cmd==='あ' ? 58 : 42;
+    const y = 50;
+    moveDevice(x, y);
+    log(`SYSTEM :: 装置位置 更新 (${x}%, ${y}%)`);
+    input.value='';
+    return;
+  }
+
+  // ── 隠しコマンド：残り時間変更（4桁数字）──
+  if(/^\d{4}$/.test(cmd)){
+    const mm=parseInt(cmd.slice(0,2));
+    const ss=parseInt(cmd.slice(2,4));
+    if(mm<=99 && ss<=59){
+      time=mm*60+ss;
+      updateTimer();
+      log(`SYSTEM :: タイマー変更 → ${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`);
+    } else {
+      log('SYSTEM :: 無効な時間 (例: 2530 = 25分30秒)');
+    }
+    input.value='';
+    return;
+  }
+
+  // 入力欄はクリアしない（再入力しやすくするため）
+}
+
+// ==========================================
+// パスワード/解答処理
+// ==========================================
+async function sendPassword(){
+  const pw=document.getElementById('passwordInput').value.trim();
+  if(!pw) return;
+
+  // コマンドロック解除パスワード（ロック中のみ）
+  if(pw===UNLOCK_PASSWORD && commandLocked){
+    setCommandLock(false);
+    log('AUTH SUCCESS :: コマンドロック解除');
+    document.getElementById('passwordInput').value='';
+    await showTempMessage('UNLOCK SUCCESS','コマンドロック解除','green',2500);
+    return;
+  }
+
+  // 資料番号の入力（既知の資料番号に一致する場合）
+  const knownNums=Object.values(RESOURCE_NUMBERS);
+  if(knownNums.includes(pw)){
+    // 新しい資料番号が入力されたらダウンロード完了状態もリセット
+    downloadReadyResource=pw;
+    downloadComplete=false;
+    downloadedResource=null;
+    updateDownloadStatus();
+    log(`SYSTEM :: 資料番号 [${pw}] 確認 → ダウンロード準備完了`);
+    document.getElementById('passwordInput').value='';
+    await showTempMessage('RESOURCE READY',`資料番号: ${pw}\nダウンロード準備完了`,'blue',1800);
+    return;
+  }
+
+  // サブミッションの答え
+  if(submissionAnswers.includes(pw)){
+    if(solvedAnswers.has(pw)){
+      log(`SUBMISSION :: 「${pw}」 解読済み`);
+      document.getElementById('passwordInput').value='';
+      await showTempMessage('ALREADY SOLVED','この資料は解読済みです','yellow');
+    } else {
+      solvedAnswers.add(pw);
+      infoRate+=4;
+      if(infoRate>100) infoRate=100;
+      updateInfoRate();
+      playInfoGetSound();
+      log(`SUBMISSION :: 「${pw}」 正解！ 情報取得率 +4% → ${infoRate}%`);
+      document.getElementById('passwordInput').value='';
+      await showTempMessage('CORRECT !',`情報取得率 ${infoRate}%`,'green');
+      if(infoRate===100){
+        await wait(800);
+        await showTempMessage('MISSION COMPLETE','全資料 解読完了！','green',3000);
+      }
+    }
+    return;
+  }
+
+  // 無効な入力
+  log(`ERROR :: 「${pw}」 無効な入力`);
+  document.getElementById('passwordInput').value='';
+  await showTempMessage('ERROR','無効な入力です','red');
+}
+</script>
+</body>
+</html>
