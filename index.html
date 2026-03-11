@@ -8,8 +8,14 @@ body {margin:0;background:#05080d;color:#e6f1ff;font-family:"Consolas",monospace
 .container{display:grid;grid-template-columns:2fr 1fr;height:100vh;}
 .panel{border:1px solid #1f3b5a;padding:15px;box-sizing:border-box;display:flex;flex-direction:column;min-height:0;}
 .header{font-size:22px;letter-spacing:2px;margin-bottom:10px;color:#7dd3ff;}
-.log{background:#02050a;flex:1;min-height:0;overflow-y:auto;padding:10px;border:1px solid #123;margin-bottom:10px;font-size:16px;line-height:1.6;}
+.log{background:#02050a;flex:1;min-height:0;overflow-y:auto;padding:10px;border:1px solid #123;margin-bottom:10px;font-size:24px;line-height:1.6;}
 .input-area{margin-top:10px;}
+.command-suggestions{position:absolute;top:50px;left:0;right:0;background:#0a1628;border:2px solid #1e90ff;border-radius:4px;max-height:100px;overflow-y:auto;display:none;z-index:1000;box-shadow:0 4px 6px rgba(0,0,0,0.5);}
+.suggestion-item{padding:5px 15px;cursor:pointer;border-bottom:1px solid #1e3a5f;display:flex;justify-content:space-between;align-items:center;}
+.suggestion-item:hover{background:#1e3a5f;}
+.suggestion-item:last-child{border-bottom:none;}
+.suggestion-cmd{color:#00ff00;font-weight:bold;font-size:16px;}
+.suggestion-desc{color:#888;font-size:14px;margin-left:15px;}
 input{width:100%;background:black;color:#7dd3ff;border:1px solid #1f3b5a;padding:8px;font-size:16px;box-sizing:border-box;}
 input:disabled{background:#111;color:#555;border:1px solid #400;cursor:not-allowed;}
 button{margin-top:8px;width:100%;background:#0b1c2d;color:#7dd3ff;border:1px solid #1f3b5a;padding:8px;cursor:pointer;font-size:16px;}
@@ -77,9 +83,10 @@ button:disabled{background:#111;color:#555;border:1px solid #400;cursor:not-allo
   <div class="panel">
     <div class="header">LAB TERMINAL :: COMMAND</div>
     <div class="log" id="log"></div>
-    <div style="margin-top:auto;">
+    <div style="margin-top:auto;position:relative;">
+      <div id="commandSuggestions" class="command-suggestions"></div>
       <div class="input-area">
-        <input id="commandInput" placeholder="COMMAND INPUT" onkeydown="if(event.key==='Enter'){playClickSound();sendCommand();}" />
+        <input id="commandInput" placeholder="COMMAND INPUT" onkeydown="if(event.key==='Enter'){playClickSound();sendCommand();}" oninput="updateCommandSuggestions()" onfocus="updateCommandSuggestions()" />
         <div id="lockIndicator" class="locked-indicator" style="display:none;">⛔ COMMAND INPUT LOCKED</div>
         <button id="cmdBtn" onclick="playClickSound();sendCommand()">EXECUTE</button>
       </div>
@@ -118,7 +125,7 @@ button:disabled{background:#111;color:#555;border:1px solid #400;cursor:not-allo
       <div style="border-top:1px solid #1f3b5a;padding-top:8px;">
         <div style="font-size:13px;color:#7dd3ff;margin-bottom:4px;letter-spacing:1px;">情報取得率</div>
         <div style="font-size:32px;color:#00ff99;font-weight:bold;text-align:center;"><span id="infoRate">0</span>%</div>
-        <div style="font-size:13px;color:#555;text-align:center;margin-top:4px;">解読済み: <span id="solvedCount">0</span> / 25</div>
+        <div style="font-size:13px;color:#555;text-align:center;margin-top:4px;">解読済み: <span id="solvedCount">0</span> / 20</div>
       </div>
     </div>
   </div>
@@ -130,30 +137,51 @@ button:disabled{background:#111;color:#555;border:1px solid #400;cursor:not-allo
 // 設定（番号が決まったら更新してください）
 // ==========================================
 
-// 資料番号（6桁・未確定のため仮置き）
+// 資料番号（4桁・確定）
 const RESOURCE_NUMBERS = {
-  'doc3': '000003',  // 資料3の番号
-  'doc4': '000004',  // 資料4の番号
+  'doc1-1': '8472',  // 資料1-1（旧：資料1）
+  'doc1-2': '5394',  // 資料1-2（旧：大謎1）
+  'doc2-1': '3928',  // 資料2-1
+  'doc2-2': '6150',  // 資料2-2
+  'doc3-1': '2085',  // 資料3-1
+  'doc3-2': '7416',  // 資料3-2
 };
 
-// 本1〜4に対応するサブミッション問題番号（未確定のため仮置き）
+// 本1〜5に対応するサブミッション問題番号（確定）
 const BOOK_SUBMISSION_NUMBERS = {
-  book1: 'Q01',
-  book2: 'Q02',
-  book3: 'Q03',
-  book4: 'Q04',
+  book1: 'NO.12',  // しんり - ダイヤル309
+  book2: 'NO.5',   // ゆうち - ダイヤル814
+  book3: 'NO.11',  // とんや - ダイヤル408
+  book4: 'NO.6',   // いへん - ダイヤル160
+  book5: 'NO.17',  // ライフ - ダイヤル916
 };
 
-// コマンドロック解除パスワード（仮置き・後で変更）
-const UNLOCK_PASSWORD = 'unlock123';
+// コマンドロック解除パスワード（確定）
+const UNLOCK_PASSWORD = ['かいきん', '解禁', 'kaikin'];
 
-// サブミッション答えリスト（仮置き・後で変更）
+// サブミッション答えリスト（NO.1〜NO.20・確定）
+// 各答えは配列で、複数のバリエーションを許容
 const submissionAnswers = [
-  'answer01','answer02','answer03','answer04','answer05',
-  'answer06','answer07','answer08','answer09','answer10',
-  'answer11','answer12','answer13','answer14','answer15',
-  'answer16','answer17','answer18','answer19','answer20',
-  'answer21','answer22','answer23','answer24','answer25'
+  ['rabo', 'らぼ'],  // NO.1
+  ['mail', 'めいる'],  // NO.2
+  ['うちゅう', 'うちゆう', '宇宙'],  // NO.3
+  ['かいしちてん', '開始地点'],  // NO.4
+  ['ゆうち', 'ゆうじ', '遊地', '遊治'],  // NO.5
+  ['いへん', '異変'],  // NO.6
+  ['ナトリウム', 'なとりうむ', 'natoriumu', 'na'],  // NO.7
+  ['チェロ', 'ちぇろ', 'chero', 'cello'],  // NO.8
+  ['本', 'ほん', 'hon'],  // NO.9
+  ['さいせんばこ', 'さいせん箱', '賽銭箱'],  // NO.10
+  ['とんや', '問屋'],  // NO.11
+  ['しんり', '心理'],  // NO.12
+  ['ほしぞら', '星空'],  // NO.13
+  ['nazo', 'なぞ', '謎'],  // NO.14
+  ['スター', 'すたー', 'star'],  // NO.15
+  ['ANSWER', 'あんさー', 'answer'],  // NO.16
+  ['ライフ', 'らいふ', 'life'],  // NO.17
+  ['ensou', 'えんそう', '演奏'],  // NO.18
+  ['じゃんけん', 'ジャンケン', 'janken'],  // NO.19
+  ['ESCAPE', 'えすけーぷ', 'escape']  // NO.20
 ];
 
 // ==========================================
@@ -181,8 +209,27 @@ let downloadReadyResource = null;  // パスワード欄に入力された資料
 let downloadedResource = null;     // ダウンロード済みの資料番号
 let downloadComplete = false;      // ダウンロード完了フラグ
 
+// ==========================================
+// 正規化関数（大文字小文字、ひらがなカタカナを統一）
+// ==========================================
+function normalize(str){
+  return str
+    .toLowerCase() // 小文字に統一
+    .replace(/[ァ-ヶ]/g, s => String.fromCharCode(s.charCodeAt(0) - 0x60)) // カタカナ→ひらがな
+    .replace(/[Ａ-Ｚａ-ｚ０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0)); // 全角→半角
+}
+
+
 // ラボ内で感知可能な資料（資料4は最初からラボ内に存在）
-let inLabResources = new Set([RESOURCE_NUMBERS['doc4']]);
+let inLabResources = new Set([normalize(RESOURCE_NUMBERS['doc3-2'])]);
+
+// コマンド履歴（サジェスト用）
+let commandHistory = new Set(['こたつ']);
+
+// キーシーケンス追跡（裏コマンド用）
+let keySequence = [];
+let lastKeyTime = 0;
+const KEY_SEQUENCE_TIMEOUT = 2000; // 2秒以内に入力
 
 // ==========================================
 // サウンド
@@ -199,7 +246,18 @@ function beep(freq, type, vol, dur){
 }
 
 function playClickSound(){ beep(800,'square',1.0,0.05); }
-function playErrorSound(){ beep(200,'sawtooth',1.0,0.2); }
+function playErrorSound(){ 
+  // より恐怖感のあるエラー音
+  const now=audioCtx.currentTime;
+  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.connect(g); g.connect(audioCtx.destination);
+  o.frequency.setValueAtTime(250, now);
+  o.frequency.exponentialRampToValueAtTime(100, now+0.3);
+  o.type='sawtooth';
+  g.gain.setValueAtTime(1.0, now);
+  g.gain.exponentialRampToValueAtTime(0.001, now+0.3);
+  o.start(); o.stop(now+0.3);
+}
 function playWarningSound(){ beep(440,'triangle',1.0,0.15); }
 function playInfoGetSound(){ beep(900,'sine',1.0,0.15); }
 function playActivateSound(){
@@ -241,28 +299,123 @@ function playLogSound(){
   g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime+0.03);
   o.start(); o.stop(audioCtx.currentTime+0.03);
 }
-function playSirenSound(){
-  const now=audioCtx.currentTime;
+// 恐怖音1（1つ目のアラート用）- 低音の不協和音
+function playHorrorSound1(){
+  const now = audioCtx.currentTime;
+  
+  // 超低音のうなり
   const o1=audioCtx.createOscillator(), g1=audioCtx.createGain();
-  o1.connect(g1); g1.connect(audioCtx.destination); o1.type='sawtooth';
-  o1.frequency.setValueAtTime(300,now);
-  o1.frequency.linearRampToValueAtTime(900,now+0.3);
-  o1.frequency.setValueAtTime(300,now+0.3);
-  o1.frequency.linearRampToValueAtTime(900,now+0.6);
-  o1.frequency.setValueAtTime(300,now+0.6);
-  o1.frequency.linearRampToValueAtTime(900,now+0.9);
-  g1.gain.setValueAtTime(1.0,now);
-  g1.gain.exponentialRampToValueAtTime(0.001,now+1.2);
-  o1.start(now); o1.stop(now+1.2);
+  o1.connect(g1); g1.connect(audioCtx.destination);
+  o1.type='sawtooth';
+  o1.frequency.setValueAtTime(80, now);
+  o1.frequency.exponentialRampToValueAtTime(40, now+2);
+  g1.gain.setValueAtTime(1.0, now);
+  g1.gain.setValueAtTime(1.0, now+1.8);
+  g1.gain.exponentialRampToValueAtTime(0.001, now+2);
+  o1.start(now); o1.stop(now+2);
+  
+  // 不協和音（高音）
   const o2=audioCtx.createOscillator(), g2=audioCtx.createGain();
   o2.connect(g2); g2.connect(audioCtx.destination);
-  o2.type='sine'; o2.frequency.value=80;
-  [0,0.3,0.6,0.9].forEach(t=>{
+  o2.type='triangle';
+  o2.frequency.value=666; // 不協和な周波数
+  g2.gain.setValueAtTime(0.7, now);
+  g2.gain.exponentialRampToValueAtTime(0.001, now+2);
+  o2.start(now); o2.stop(now+2);
+  
+  // パルス音（緊張感）
+  for(let i=0; i<8; i++){
+    const o3=audioCtx.createOscillator(), g3=audioCtx.createGain();
+    o3.connect(g3); g3.connect(audioCtx.destination);
+    o3.type='square';
+    o3.frequency.value=200;
+    const t = now + i*0.25;
+    g3.gain.setValueAtTime(0, t);
+    g3.gain.setValueAtTime(0.8, t+0.01);
+    g3.gain.exponentialRampToValueAtTime(0.001, t+0.1);
+    o3.start(t); o3.stop(t+0.1);
+  }
+}
+
+// 恐怖音2（3つ目のアラート用）- 絶望的な重低音
+function playHorrorSound2(){
+  const now = audioCtx.currentTime;
+  
+  // 重低音のドローン
+  const o1=audioCtx.createOscillator(), g1=audioCtx.createGain();
+  o1.connect(g1); g1.connect(audioCtx.destination);
+  o1.type='sawtooth';
+  o1.frequency.setValueAtTime(50, now);
+  o1.frequency.exponentialRampToValueAtTime(30, now+3);
+  g1.gain.setValueAtTime(1.0, now);
+  g1.gain.setValueAtTime(1.0, now+2.8);
+  g1.gain.exponentialRampToValueAtTime(0.001, now+3);
+  o1.start(now); o1.stop(now+3);
+  
+  // 不気味な振動音
+  const o2=audioCtx.createOscillator(), g2=audioCtx.createGain();
+  o2.connect(g2); g2.connect(audioCtx.destination);
+  o2.type='sine';
+  o2.frequency.value=7; // 超低周波でうなる
+  g2.gain.setValueAtTime(0.5, now);
+  g2.gain.exponentialRampToValueAtTime(0.001, now+3);
+  o2.start(now); o2.stop(now+3);
+  
+  // 絶望的な下降音
+  const o3=audioCtx.createOscillator(), g3=audioCtx.createGain();
+  o3.connect(g3); g3.connect(audioCtx.destination);
+  o3.type='triangle';
+  o3.frequency.setValueAtTime(500, now);
+  o3.frequency.exponentialRampToValueAtTime(100, now+3);
+  g3.gain.setValueAtTime(0.8, now);
+  g3.gain.exponentialRampToValueAtTime(0.001, now+3);
+  o3.start(now); o3.stop(now+3);
+  
+  // 衝撃音（最初）
+  const o4=audioCtx.createOscillator(), g4=audioCtx.createGain();
+  o4.connect(g4); g4.connect(audioCtx.destination);
+  o4.type='square';
+  o4.frequency.value=100;
+  g4.gain.setValueAtTime(1.0, now);
+  g4.gain.exponentialRampToValueAtTime(0.001, now+0.3);
+  o4.start(now); o4.stop(now+0.3);
+}
+
+function playSirenSound(){
+  const now=audioCtx.currentTime;
+  // メインサイレン（より長く激しく）
+  const o1=audioCtx.createOscillator(), g1=audioCtx.createGain();
+  o1.connect(g1); g1.connect(audioCtx.destination); o1.type='sawtooth';
+  // 6回の警報パターン（2.4秒）
+  for(let i=0; i<6; i++){
+    const t=i*0.4;
+    o1.frequency.setValueAtTime(250,now+t);
+    o1.frequency.linearRampToValueAtTime(1000,now+t+0.2);
+  }
+  g1.gain.setValueAtTime(1.0,now);
+  g1.gain.setValueAtTime(1.0,now+2.4);
+  g1.gain.exponentialRampToValueAtTime(0.001,now+2.8);
+  o1.start(now); o1.stop(now+2.8);
+  
+  // 低音パルス（恐怖感を演出）
+  const o2=audioCtx.createOscillator(), g2=audioCtx.createGain();
+  o2.connect(g2); g2.connect(audioCtx.destination);
+  o2.type='sine'; o2.frequency.value=60;
+  for(let i=0; i<12; i++){
+    const t=i*0.2;
     g2.gain.setValueAtTime(0,now+t);
     g2.gain.setValueAtTime(1.0,now+t+0.05);
-    g2.gain.setValueAtTime(0,now+t+0.15);
-  });
-  o2.start(now); o2.stop(now+1.2);
+    g2.gain.setValueAtTime(0,now+t+0.1);
+  }
+  o2.start(now); o2.stop(now+2.8);
+  
+  // 不協和音（不気味さを追加）
+  const o3=audioCtx.createOscillator(), g3=audioCtx.createGain();
+  o3.connect(g3); g3.connect(audioCtx.destination);
+  o3.type='triangle'; o3.frequency.value=137; // 不協和な周波数
+  g3.gain.setValueAtTime(0.6,now);
+  g3.gain.exponentialRampToValueAtTime(0.001,now+2.8);
+  o3.start(now); o3.stop(now+2.8);
 }
 
 // ==========================================
@@ -299,14 +452,14 @@ function startTimer(){
         await showTempMessage('!! 消失実行 !!','ラボごと消失 / GAME OVER','red',99999);
       } else if(deviceRunning && (deviceX!==50 || deviceY!==50) && radius===3){
         // END3「脱出」: 装置が起動中 かつ 中央以外 かつ 半径3m
-        document.getElementById('statusText').innerText='脱出成功';
+        document.getElementById('statusText').innerText='消失完了';
         log('SYSTEM :: ラボの一部が消失 → 脱出口が開く');
-        await showTempMessage('脱出成功 !!','ラボの一部が消失 / 脱出口が開いた！','green',99999);
+        await showTempMessage('!! 消失実行 !!','ラボの部分的消失を確認 / 侵入者の生存を確認','green',99999);
       } else {
         // END2「閉じ込め」: 装置が停止中 または 半径が3mではない
         document.getElementById('statusText').innerText='閉じ込められた';
-        log('SYSTEM :: 脱出失敗 → ラボ内に閉じ込められた');
-        await showTempMessage('閉じ込め','脱出失敗 / ラボ内に閉じ込められた','red',99999);
+        log('SYSTEM :: 消失装置停止状態 / 侵入者の生存確認');
+        await showTempMessage('消失装置停止状態','侵入者の生存確認 / CLEAR...?','yellow',99999);
       }
     }
     updateTimer();
@@ -431,12 +584,154 @@ function skipIntro(){
 }
 
 // ==========================================
+// コマンドサジェスト更新
+// ==========================================
+function updateCommandSuggestions(){
+  const datalist = document.getElementById('commandSuggestions');
+  datalist.innerHTML = '';
+  commandHistory.forEach(cmd => {
+    const option = document.createElement('option');
+    option.value = cmd;
+    datalist.appendChild(option);
+  });
+}
+
+// ==========================================
 // コマンド処理
 // ==========================================
+
+
+// コマンド説明マップ
+const commandDescriptions = {
+  'こいぬ': '金庫 開放',
+  'こたつ': '金庫 閉鎖',
+  'しまね': 'ダウンロード',
+  'しまうま': 'アップロード（印刷）',
+  'うみ': '消失半径 -3m',
+  'とりい': '消失半径 +3m'
+};
+
+// コマンドサジェスト更新
+function updateCommandSuggestions(){
+  const input = document.getElementById('commandInput');
+  const suggestBox = document.getElementById('commandSuggestions');
+  if(!suggestBox || !input) return;
+  
+  const currentInput = input.value.trim();
+  
+  if(!window.commandHistory) window.commandHistory = new Set(['こたつ']);
+  
+  let matches;
+  if(!currentInput){
+    // 入力がない場合はすべてのコマンド履歴を表示
+    matches = Array.from(window.commandHistory);
+  } else {
+    // 入力に部分一致するコマンドをフィルタ（完全一致は除外）
+    matches = Array.from(window.commandHistory).filter(cmd => 
+      cmd.startsWith(currentInput) && cmd !== currentInput
+    );
+  }
+  
+  // マッチがない場合は非表示
+  if(matches.length === 0){
+    suggestBox.style.display = 'none';
+    return;
+  }
+  
+  // サジェストを表示
+  suggestBox.innerHTML = '';
+  matches.forEach(cmd => {
+    const item = document.createElement('div');
+    item.className = 'suggestion-item';
+    
+    const cmdSpan = document.createElement('span');
+    cmdSpan.className = 'suggestion-cmd';
+    cmdSpan.textContent = cmd;
+    
+    const descSpan = document.createElement('span');
+    descSpan.className = 'suggestion-desc';
+    descSpan.textContent = commandDescriptions[cmd] || '';
+    
+    item.appendChild(cmdSpan);
+    item.appendChild(descSpan);
+    
+    // クリックで入力欄に反映
+    item.onclick = () => {
+      input.value = cmd;
+      suggestBox.style.display = 'none';
+      input.focus();
+    };
+    
+    suggestBox.appendChild(item);
+  });
+  
+  suggestBox.style.display = 'block';
+}
+
+// サジェストボックス外クリックで閉じる
+document.addEventListener('click', (e) => {
+  const suggestBox = document.getElementById('commandSuggestions');
+  const input = document.getElementById('commandInput');
+  if(suggestBox && input && !suggestBox.contains(e.target) && e.target !== input){
+    suggestBox.style.display = 'none';
+  }
+});
+
+// キーボードイベントリスナー（裏コマンド用）
+document.addEventListener('keydown', (e) => {
+  const now = Date.now();
+  
+  // タイムアウトチェック（2秒以上経過していたらリセット）
+  if(now - lastKeyTime > KEY_SEQUENCE_TIMEOUT){
+    keySequence = [];
+  }
+  lastKeyTime = now;
+  
+  // 矢印キーのみ記録
+  if(e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowUp'){
+    keySequence.push(e.key);
+    
+    // 最新3つのみ保持
+    if(keySequence.length > 3){
+      keySequence.shift();
+    }
+    
+    // 3つ連続で同じキーが押されたかチェック
+    if(keySequence.length === 3){
+      if(keySequence[0] === 'ArrowRight' && keySequence[1] === 'ArrowRight' && keySequence[2] === 'ArrowRight'){
+        // 右寄りに移動
+        moveDevice(58, 50);
+        log('SYSTEM :: 装置位置 更新 (右寄り: 58%, 50%)');
+        playSuccessSound();
+        keySequence = [];
+      } else if(keySequence[0] === 'ArrowLeft' && keySequence[1] === 'ArrowLeft' && keySequence[2] === 'ArrowLeft'){
+        // 左寄りに移動
+        moveDevice(42, 50);
+        log('SYSTEM :: 装置位置 更新 (左寄り: 42%, 50%)');
+        playSuccessSound();
+        keySequence = [];
+      } else if(keySequence[0] === 'ArrowUp' && keySequence[1] === 'ArrowUp' && keySequence[2] === 'ArrowUp'){
+        // 中央に移動
+        moveDevice(50, 50);
+        log('SYSTEM :: 装置位置 更新 (中央: 50%, 50%)');
+        playSuccessSound();
+        keySequence = [];
+      }
+    }
+  }
+});
+
 async function sendCommand(){
   const input=document.getElementById('commandInput');
   const cmd=input.value.trim();
   if(!cmd) return;
+  
+  // コマンド履歴に追加（6つのコマンドのみ）
+  const validCommands = ['こいぬ','こたつ','しまね','しまうま','うみ','とりい'];
+  if(validCommands.includes(cmd)){
+    if(!window.commandHistory) window.commandHistory = new Set(['こたつ']);
+    window.commandHistory.add(cmd);
+  }
 
   // ── 隠しコマンド：スキップ（ロック前でも使用可能）──
   if(cmd==='すきっぷ'){
@@ -455,7 +750,7 @@ async function sendCommand(){
   await showTempMessage('COMMAND','解析中: '+cmd,'yellow',800);
 
   const known=['こいぬ','こたつ','しまね','しまうま','うみ','とりい'];
-  if(!known.includes(cmd) && cmd!=='あ' && cmd!=='お' && cmd!=='すきっぷ' && !/^\d{4}$/.test(cmd)){
+  if(!known.includes(cmd) && cmd!=='すきっぷ' && !/^\d{4}$/.test(cmd)){
     log('SYSTEM :: 該当コマンドなし');
     input.value='';
     await showTempMessage('COMMAND ERROR','コマンドが存在しません','red');
@@ -470,7 +765,8 @@ async function sendCommand(){
       log('SYSTEM :: 金庫 開放 試行...');
       await wait(3000);
       log('SECURITY :: 未登録コマンド使用を検知');
-      await showTempMessage('!! WARNING !!','未登録コマンド使用を検知','red',1500);
+      playHorrorSound1();
+      await showTempMessage('!! SECURITY ALERT !!','不正アクセス検知 / 即座に対応します','red',2500);
       await displayLogsSequentially([
         'SECURITY :: コマンド送信元 解析中...',
         'SECURITY :: 認証ID 不一致',
@@ -488,7 +784,7 @@ async function sendCommand(){
       await displayLogsSequentially(delLogs,40);
       document.getElementById('log').innerHTML='';
       playSirenSound();
-      await showTempMessage('INTRUSION ALERT','対侵入者システム 作動','red',2000);
+      await showTempMessage('!! INTRUSION DETECTED !!','対侵入者システム 起動 / ラボ封鎖 / 脱出不可能','red',3500);
       setCommandLock(true);
       await displayLogsSequentially([
         'SYSTEM :: 対侵入者システム 作動',
@@ -496,11 +792,11 @@ async function sendCommand(){
         'SYSTEM :: ラボ 即時封鎖',
         'SYSTEM STATUS :: ラボ 閉鎖完了',
         'SYSTEM :: 消失プロセス 開始',
-        'SYSTEM :: 消失半径を設定 初期値 = 9m',
+        '<span style="color:#ff6b6b">SYSTEM :: 消失半径を設定 初期値 = 9m</span>',
         'SYSTEM STATUS :: 消失装置 起動完了',
-        'SYSTEM :: 30分後 [消失指示] 送信予定',
-        'SYSTEM STATUS :: 金庫開放 停止',
-        'SYSTEM STATUS :: コマンド入力欄 ロック',
+        '<span style="color:#ff6b6b">SYSTEM :: 30分後 [消失指示] 送信予定</span>',
+        '<span style="color:#ff6b6b">SYSTEM STATUS :: 金庫開放 停止</span>',
+        '<span style="color:#ff6b6b">SYSTEM STATUS :: コマンド入力欄 ロック</span>',
         'SYSTEM :: 警告：脱出不可能',
       ],300);
       document.getElementById('devicePanel').style.display='block';
@@ -509,7 +805,8 @@ async function sendCommand(){
       deviceRunning=true;
       updateMonitor();
       startTimer();
-      await showTempMessage('消失装置 起動','消失まで 30:00','red',2500);
+      playHorrorSound2();
+      await showTempMessage('!! 消失装置 起動 !!','30分後 ラボごと消失 / 生存確率 0%','red',4000);
     } else {
       // 2回目以降（コマンドロック解除後）：金庫開放
       if(vaultOpen){
@@ -553,16 +850,17 @@ async function sendCommand(){
       updateDownloadStatus();
       log(`SYSTEM :: 資料番号 [${downloadedResource}] ダウンロード完了`);
 
-      // 資料3のダウンロード時：本1〜4のサブミッション問題番号を表示
-      if(downloadedResource===RESOURCE_NUMBERS['doc3']){
+      // 資料3-1のダウンロード時：本1〜4のサブミッション問題番号を表示
+      if(downloadedResource===normalize(RESOURCE_NUMBERS['doc3-1'])){
         await showTempMessage('DOWNLOAD COMPLETE','ダウンロード完了','green',1500);
         await displayLogsSequentially([
-          'SYSTEM :: アップロードに必要な認証情報:',
-          `SYSTEM :: 本1 対応問題番号 → ${BOOK_SUBMISSION_NUMBERS.book1}`,
-          `SYSTEM :: 本2 対応問題番号 → ${BOOK_SUBMISSION_NUMBERS.book2}`,
-          `SYSTEM :: 本3 対応問題番号 → ${BOOK_SUBMISSION_NUMBERS.book3}`,
-          `SYSTEM :: 本4 対応問題番号 → ${BOOK_SUBMISSION_NUMBERS.book4}`,
-          'SYSTEM :: ※ アップロードには 迷路のかけら 4枚 が必要',
+          '<span style="color:#ff6b6b">SYSTEM :: アップロードを実行する場合は『アップロードコマンド』を入力</span>',
+          '<span style="color:#ff6b6b">SYSTEM :: 『アップロードコマンド』の特定には 迷路のかけら 4枚 が必要</span>',
+          '<span style="color:#ff6b6b">SYSTEM :: 以下の4冊の中にある『めいろのかけら』を使用せよ</span>',
+          `<span style="color:#ff6b6b">SYSTEM :: 本1 対応問題番号 → ${BOOK_SUBMISSION_NUMBERS.book1}</span>`,
+          `<span style="color:#ff6b6b">SYSTEM :: 本2 対応問題番号 → ${BOOK_SUBMISSION_NUMBERS.book2}</span>`,
+          `<span style="color:#ff6b6b">SYSTEM :: 本3 対応問題番号 → ${BOOK_SUBMISSION_NUMBERS.book3}</span>`,
+          `<span style="color:#ff6b6b">SYSTEM :: 本4 対応問題番号 → ${BOOK_SUBMISSION_NUMBERS.book4}</span>`,
         ],300);
       } else {
         await showTempMessage('DOWNLOAD COMPLETE','ダウンロード完了','green');
@@ -576,8 +874,11 @@ async function sendCommand(){
     if(!downloadComplete || !downloadedResource){
       log('SYSTEM :: ダウンロード済み資料なし');
       await showTempMessage('UPLOAD ERROR','先にダウンロードを行ってください','red');
+    } else if(downloadedResource!==normalize(RESOURCE_NUMBERS['doc3-1']) && downloadedResource!==normalize(RESOURCE_NUMBERS['doc3-2'])){
+      log(`<span style="color:#ff6b6b">SYSTEM :: ERROR :: 資料 [${downloadedResource}] はアップロード不可</span>`);
+      await showTempMessage('UPLOAD ERROR','この資料はアップロードできません','red',3000);
     } else if(inLabResources.has(downloadedResource)){
-      log(`SYSTEM :: ERROR :: 資料 [${downloadedResource}] は既にラボ内に存在します`);
+      log(`<span style="color:#ff6b6b">SYSTEM :: ERROR :: 資料 [${downloadedResource}] は既にラボ内に存在します</span>`);
       await showTempMessage('UPLOAD ERROR','この資料はすでにラボ内に存在します\nアップロード不可','red',3000);
     } else {
       log(`SYSTEM :: 資料 [${downloadedResource}] アップロード（印刷）完了`);
@@ -604,7 +905,7 @@ async function sendCommand(){
         updateMonitor();
         playDeactivateSound();
         document.getElementById('statusText').innerText='停止中';
-        log('SYSTEM :: 消失装置 自動停止');
+        log('<span style="color:#ff6b6b">SYSTEM :: 消失装置 自動停止</span>');
         await showTempMessage('装置 自動停止','消失装置 自動停止','green',3000);
       } else {
         await showTempMessage('RADIUS -3m',`${prev}m → ${radius}m`,'yellow');
@@ -622,7 +923,7 @@ async function sendCommand(){
       // ①再起動表示
       playActivateSound();
       document.getElementById('statusText').innerText='消失装置 起動中';
-      log('SYSTEM :: 消失装置 再起動');
+      log('<span style="color:#ff6b6b">SYSTEM :: 消失装置 再起動</span>');
       await showTempMessage('装置 再起動','消失装置 再起動','yellow',1500);
       // ②拡大表示
       log(`SYSTEM :: 消失半径 0m → ${radius}m`);
@@ -647,15 +948,7 @@ async function sendCommand(){
     }
   }
 
-  // ── 隠しコマンド：装置移動 ──
-  if(cmd==='あ' || cmd==='お'){
-    const x = cmd==='あ' ? 58 : 42;
-    const y = 50;
-    moveDevice(x, y);
-    log(`SYSTEM :: 装置位置 更新 (${x}%, ${y}%)`);
-    input.value='';
-    return;
-  }
+
 
   // ── 隠しコマンド：残り時間変更（4桁数字）──
   if(/^\d{4}$/.test(cmd)){
@@ -683,7 +976,8 @@ async function sendPassword(){
   if(!pw) return;
 
   // コマンドロック解除パスワード（ロック中のみ）
-  if(pw===UNLOCK_PASSWORD && commandLocked){
+  const normalizedUnlockPasswords = UNLOCK_PASSWORD.map(p => normalize(p));
+  if(normalizedUnlockPasswords.includes(normalize(pw)) && commandLocked){
     setCommandLock(false);
     log('AUTH SUCCESS :: コマンドロック解除');
     document.getElementById('passwordInput').value='';
@@ -692,10 +986,11 @@ async function sendPassword(){
   }
 
   // 資料番号の入力（既知の資料番号に一致する場合）
-  const knownNums=Object.values(RESOURCE_NUMBERS);
-  if(knownNums.includes(pw)){
+  const knownNums=Object.values(RESOURCE_NUMBERS).map(n => normalize(n));
+  const normalizedPwForResource = normalize(pw);
+  if(knownNums.includes(normalizedPwForResource)){
     // 新しい資料番号が入力されたらダウンロード完了状態もリセット
-    downloadReadyResource=pw;
+    downloadReadyResource=normalizedPwForResource;
     downloadComplete=false;
     downloadedResource=null;
     updateDownloadStatus();
@@ -706,18 +1001,21 @@ async function sendPassword(){
   }
 
   // サブミッションの答え
-  if(submissionAnswers.includes(pw)){
-    if(solvedAnswers.has(pw)){
+  const normalizedPw = normalize(pw);
+  // submissionAnswersは配列の配列なので、フラット化して正規化
+  const normalizedAnswers = submissionAnswers.flat().map(a => normalize(a));
+  if(normalizedAnswers.includes(normalizedPw)){
+    if(solvedAnswers.has(normalizedPw)){
       log(`SUBMISSION :: 「${pw}」 解読済み`);
       document.getElementById('passwordInput').value='';
       await showTempMessage('ALREADY SOLVED','この資料は解読済みです','yellow');
     } else {
-      solvedAnswers.add(pw);
-      infoRate+=4;
+      solvedAnswers.add(normalizedPw);
+      infoRate+=5;
       if(infoRate>100) infoRate=100;
       updateInfoRate();
       playInfoGetSound();
-      log(`SUBMISSION :: 「${pw}」 正解！ 情報取得率 +4% → ${infoRate}%`);
+      log(`SUBMISSION :: 「${pw}」 正解！ 情報取得率 +5% → ${infoRate}%`);
       document.getElementById('passwordInput').value='';
       await showTempMessage('CORRECT !',`情報取得率 ${infoRate}%`,'green');
       if(infoRate===100){
