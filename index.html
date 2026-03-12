@@ -23,7 +23,7 @@ button:hover{background:#102b45;}
 button:disabled{background:#111;color:#555;border:1px solid #400;cursor:not-allowed;}
 .locked-indicator{text-align:center;font-size:14px;color:#ff4d4d;margin-top:4px;letter-spacing:1px;animation:alertFlash 1s infinite;padding:4px;}
 .status{font-size:24px;margin-top:6px;font-weight:bold;text-align:center;letter-spacing:1px;}
-.timer{font-size:52px;color:#ff6b6b;font-weight:bold;text-align:center;letter-spacing:3px;}
+.timer{font-size:52px;color:#4ade80;font-weight:bold;text-align:center;letter-spacing:3px;transition:color 0.5s ease;}
 .monitor-frame{
   width:300px; height:300px;
   margin:10px auto;
@@ -198,6 +198,11 @@ let commandLocked = false;
 let deviceRunning = false;
 let vaultOpen = false;
 let solvedAnswers = new Set();
+
+// タイマー警告フラグ
+let warned10min = false;
+let warned5min = false;
+let warned1min = false;
 let infoRate = 0;
 
 // 装置位置（フレーム内%）
@@ -385,6 +390,24 @@ function playHorrorSound2(){
   o4.start(now); o4.stop(now+0.3);
 }
 
+// タイマー警告音
+function playTimerWarningSound(){
+  const now = audioCtx.currentTime;
+  
+  // 3回のビープ音
+  for(let i=0; i<3; i++){
+    const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+    o.connect(g); g.connect(audioCtx.destination);
+    o.type='sine';
+    o.frequency.value=800;
+    const t = now + i*0.4;
+    g.gain.setValueAtTime(0, t);
+    g.gain.setValueAtTime(0.8, t+0.01);
+    g.gain.exponentialRampToValueAtTime(0.001, t+0.3);
+    o.start(t); o.stop(t+0.3);
+  }
+}
+
 function playSirenSound(){
   const now=audioCtx.currentTime;
   // メインサイレン（より長く激しく）
@@ -428,7 +451,12 @@ function playSirenSound(){
 function log(msg){
   playLogSound();
   const box=document.getElementById('log');
-  box.innerHTML+=msg+'<br>';
+  
+  // SYSTEM :: や SUBMISSION :: などのプレフィックスを白色に
+  let processedMsg = msg;
+  processedMsg = processedMsg.replace(/(SYSTEM|SUBMISSION|AUTH|SECURITY)\s*::/g, '<span style="color:#ffffff">$1 ::</span>');
+  
+  box.innerHTML+=processedMsg+'<br>';
   box.scrollTop=box.scrollHeight;
 }
 function wait(ms){ return new Promise(r=>setTimeout(r,ms)); }
@@ -436,7 +464,19 @@ function wait(ms){ return new Promise(r=>setTimeout(r,ms)); }
 function updateTimer(){
   const m=String(Math.floor(time/60)).padStart(2,'0');
   const s=String(time%60).padStart(2,'0');
-  document.getElementById('timer').innerText=`${m}:${s}`;
+  const timerEl = document.getElementById('timer');
+  timerEl.innerText=`${m}:${s}`;
+  
+  // タイマーの色を時間に応じて変更
+  if(time > 600){ // 10分以上
+    timerEl.style.color = '#4ade80'; // 緑
+  } else if(time > 300){ // 5-10分
+    timerEl.style.color = '#fbbf24'; // 黄色
+  } else if(time > 60){ // 1-5分
+    timerEl.style.color = '#fb923c'; // オレンジ
+  } else { // 1分未満
+    timerEl.style.color = '#ef4444'; // 赤
+  }
 }
 
 function startTimer(){
@@ -444,6 +484,29 @@ function startTimer(){
   timerStarted=true;
   timerInterval=setInterval(async ()=>{
     time--;
+    
+    // タイマー警告チェック
+    if(time === 600 && !warned10min){ // 残り10分
+      warned10min = true;
+      playTimerWarningSound();
+      log('<span style="color:#fbbf24">!! 警告 :: 残り時間 10分 !!</span>');
+      await showTempMessage('!! TIME WARNING !!','残り時間 10分','yellow',2000);
+    } else if(time === 300 && !warned5min){ // 残り5分
+      warned5min = true;
+      playTimerWarningSound();
+      log('<span style="color:#fb923c">!! 警告 :: 残り時間 5分 !!</span>');
+      await showTempMessage('!! TIME WARNING !!','残り時間 5分','orange',2000);
+      // 画面フラッシュ（黄色）
+      flashScreen('#fbbf24');
+    } else if(time === 60 && !warned1min){ // 残り1分
+      warned1min = true;
+      playTimerWarningSound();
+      log('<span style="color:#ef4444">!! 警告 :: 残り時間 1分 !!</span>');
+      await showTempMessage('!! TIME WARNING !!','残り時間 1分','red',2000);
+      // 画面フラッシュ（赤）
+      flashScreen('#ef4444');
+    }
+    
     if(time<=0){
       clearInterval(timerInterval);
       log('>> [消失指示] 発令');
@@ -541,13 +604,14 @@ function updateInfoRate(){
 
 async function showTempMessage(title,message,type='red',duration=2000){
   if(type==='red') playErrorSound();
-  if(type==='yellow') playWarningSound();
+  if(type==='yellow' || type==='orange') playWarningSound();
   if(type==='green') playSuccessSound();
   return new Promise(resolve=>{
     const overlay=document.getElementById('alert');
     const box=document.getElementById('alertBox');
     let color='#ff4d4d', bg='rgba(80,0,0,0.92)', shadow='#ff0000', anim='alertFlash 1s infinite';
     if(type==='yellow'){ color='#ffd84d'; bg='rgba(0,0,0,0.85)'; shadow='#ffea00'; anim='none'; }
+    if(type==='orange'){ color='#fb923c'; bg='rgba(80,40,0,0.92)'; shadow='#fb923c'; anim='alertFlash 1s infinite'; }
     if(type==='blue')  { color='#4da6ff'; bg='rgba(0,0,0,0.85)'; shadow='#3399ff'; anim='none'; }
     if(type==='green') { color='#4dff88'; bg='rgba(0,60,30,0.92)'; shadow='#00ff99'; anim='alertFlashGreen 1s infinite'; }
     overlay.style.background=bg; overlay.style.animation=anim;
@@ -556,6 +620,28 @@ async function showTempMessage(title,message,type='red',duration=2000){
     overlay.style.display='flex';
     setTimeout(()=>{ overlay.style.display='none'; overlay.style.animation='none'; resolve(); }, duration);
   });
+}
+
+// 画面フラッシュ効果
+function flashScreen(color){
+  const flash = document.createElement('div');
+  flash.style.position = 'fixed';
+  flash.style.top = '0';
+  flash.style.left = '0';
+  flash.style.width = '100%';
+  flash.style.height = '100%';
+  flash.style.backgroundColor = color;
+  flash.style.opacity = '0';
+  flash.style.pointerEvents = 'none';
+  flash.style.zIndex = '9999';
+  document.body.appendChild(flash);
+  
+  // フラッシュアニメーション
+  setTimeout(() => { flash.style.transition = 'opacity 0.1s'; flash.style.opacity = '0.5'; }, 10);
+  setTimeout(() => { flash.style.opacity = '0'; }, 150);
+  setTimeout(() => { flash.style.opacity = '0.5'; }, 300);
+  setTimeout(() => { flash.style.opacity = '0'; }, 450);
+  setTimeout(() => { document.body.removeChild(flash); }, 600);
 }
 
 async function displayLogsSequentially(arr,delay=200){
@@ -705,19 +791,16 @@ document.addEventListener('keydown', (e) => {
       if(keySequence[0] === 'ArrowRight' && keySequence[1] === 'ArrowRight' && keySequence[2] === 'ArrowRight'){
         // 右寄りに移動
         moveDevice(58, 50);
-        log('SYSTEM :: 装置位置 更新 (右寄り: 58%, 50%)');
         playSuccessSound();
         keySequence = [];
       } else if(keySequence[0] === 'ArrowLeft' && keySequence[1] === 'ArrowLeft' && keySequence[2] === 'ArrowLeft'){
         // 左寄りに移動
         moveDevice(42, 50);
-        log('SYSTEM :: 装置位置 更新 (左寄り: 42%, 50%)');
         playSuccessSound();
         keySequence = [];
       } else if(keySequence[0] === 'ArrowUp' && keySequence[1] === 'ArrowUp' && keySequence[2] === 'ArrowUp'){
         // 中央に移動
         moveDevice(50, 50);
-        log('SYSTEM :: 装置位置 更新 (中央: 50%, 50%)');
         playSuccessSound();
         keySequence = [];
       }
@@ -748,16 +831,18 @@ async function sendCommand(){
   if(cmd==='すきっぷ'){
     skipIntro();
     input.value='';
+    isCommandProcessing = false;
     return;
   }
 
   if(commandLocked){
     log('SYSTEM :: コマンド入力ロック中');
     await showTempMessage('SYSTEM LOCKED','対侵入者システム作動中','red');
+    isCommandProcessing = false;
     return;
   }
 
-  log(`SYSTEM :: 「${cmd}」 入力確認`);
+  log(`<span style="color:#fbbf24">SYSTEM :: 「${cmd}」 入力確認</span>`);
   await showTempMessage('COMMAND','解析中: '+cmd,'yellow',800);
 
   const known=['こいぬ','こたつ','しまね','しまうま','うみ','とりい'];
@@ -765,6 +850,7 @@ async function sendCommand(){
     log('SYSTEM :: 該当コマンドなし');
     input.value='';
     await showTempMessage('COMMAND ERROR','コマンドが存在しません','red');
+    isCommandProcessing = false;
     return;
   }
 
@@ -859,7 +945,7 @@ async function sendCommand(){
       downloadedResource=downloadReadyResource;
       downloadComplete=true;
       updateDownloadStatus();
-      log(`SYSTEM :: 資料番号 [${downloadedResource}] ダウンロード完了`);
+      log(`<span style="color:#4ade80">SYSTEM :: 資料番号 [${downloadedResource}] ダウンロード完了</span>`);
 
       // 資料3-1のダウンロード時：本1〜4のサブミッション問題番号を表示
       if(downloadedResource===normalize(RESOURCE_NUMBERS['doc3-1'])){
@@ -875,7 +961,7 @@ async function sendCommand(){
         ],300);
       } else {
         await showTempMessage('DOWNLOAD COMPLETE','ダウンロード完了','green');
-        log('SYSTEM :: ダウンロード完了');
+        log('<span style="color:#4ade80">SYSTEM :: ダウンロード完了</span>');
       }
     }
   }
@@ -892,7 +978,7 @@ async function sendCommand(){
       log(`<span style="color:#ff6b6b">SYSTEM :: ERROR :: 資料 [${downloadedResource}] は既にラボ内に存在します</span>`);
       await showTempMessage('UPLOAD ERROR','この資料はすでにラボ内に存在します\nアップロード不可','red',3000);
     } else {
-      log(`SYSTEM :: 資料 [${downloadedResource}] アップロード（印刷）完了`);
+      log(`<span style="color:#4ade80">SYSTEM :: 資料 [${downloadedResource}] アップロード（印刷）完了</span>`);
       await showTempMessage('UPLOAD COMPLETE','印刷完了\n資料を受け取ってください','green',2500);
       // ダウンロード完了表示はそのまま維持（リセットしない）
     }
@@ -968,11 +1054,13 @@ async function sendCommand(){
     if(mm<=99 && ss<=59){
       time=mm*60+ss;
       updateTimer();
-      log(`SYSTEM :: タイマー変更 → ${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`);
-    } else {
-      log('SYSTEM :: 無効な時間 (例: 2530 = 25分30秒)');
+      // 警告フラグをリセット
+      warned10min = time < 600;
+      warned5min = time < 300;
+      warned1min = time < 60;
     }
     input.value='';
+    isCommandProcessing = false;
     return;
   }
 
@@ -1014,7 +1102,7 @@ async function sendPassword(){
     downloadComplete=false;
     downloadedResource=null;
     updateDownloadStatus();
-    log(`SYSTEM :: 資料番号 [${pw}] 確認 → ダウンロード準備完了`);
+    log(`<span style="color:#4dabf7">SYSTEM :: 資料番号 [${pw}] 確認 → ダウンロード準備完了</span>`);
     document.getElementById('passwordInput').value='';
     await showTempMessage('RESOURCE READY',`資料番号: ${pw}\nダウンロード準備完了`,'blue',1800);
     isPasswordProcessing = false;
@@ -1047,7 +1135,7 @@ async function sendPassword(){
       if(infoRate>100) infoRate=100;
       updateInfoRate();
       playInfoGetSound();
-      log(`SUBMISSION :: NO.${submissionNumber} 「${pw}」 正解！ 情報取得率 +5% → ${infoRate}%`);
+      log(`<span style="color:#4ade80">SUBMISSION :: NO.${submissionNumber} 「${pw}」 正解！ 情報取得率 +5% → ${infoRate}%</span>`);
       document.getElementById('passwordInput').value='';
       await showTempMessage(`CORRECT ! NO.${submissionNumber}`,`情報取得率 ${infoRate}%`,'green');
       if(infoRate===100){
