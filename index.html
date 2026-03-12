@@ -226,6 +226,10 @@ let inLabResources = new Set([normalize(RESOURCE_NUMBERS['doc3-2'])]);
 // コマンド履歴（サジェスト用）
 let commandHistory = new Set(['こたつ']);
 
+// 処理中フラグ（連打防止）
+let isCommandProcessing = false;
+let isPasswordProcessing = false;
+
 // キーシーケンス追跡（裏コマンド用）
 let keySequence = [];
 let lastKeyTime = 0;
@@ -722,9 +726,16 @@ document.addEventListener('keydown', (e) => {
 });
 
 async function sendCommand(){
+  // 処理中チェック（連打防止）
+  if(isCommandProcessing) return;
+  isCommandProcessing = true;
+  
   const input=document.getElementById('commandInput');
   const cmd=input.value.trim();
-  if(!cmd) return;
+  if(!cmd){
+    isCommandProcessing = false;
+    return;
+  }
   
   // コマンド履歴に追加（6つのコマンドのみ）
   const validCommands = ['こいぬ','こたつ','しまね','しまうま','うみ','とりい'];
@@ -966,14 +977,22 @@ async function sendCommand(){
   }
 
   // 入力欄はクリアしない（再入力しやすくするため）
+  isCommandProcessing = false;
 }
 
 // ==========================================
 // パスワード/解答処理
 // ==========================================
 async function sendPassword(){
+  // 処理中チェック（連打防止）
+  if(isPasswordProcessing) return;
+  isPasswordProcessing = true;
+  
   const pw=document.getElementById('passwordInput').value.trim();
-  if(!pw) return;
+  if(!pw){
+    isPasswordProcessing = false;
+    return;
+  }
 
   // コマンドロック解除パスワード（ロック中のみ）
   const normalizedUnlockPasswords = UNLOCK_PASSWORD.map(p => normalize(p));
@@ -982,6 +1001,7 @@ async function sendPassword(){
     log('AUTH SUCCESS :: コマンドロック解除');
     document.getElementById('passwordInput').value='';
     await showTempMessage('UNLOCK SUCCESS','コマンドロック解除','green',2500);
+    isPasswordProcessing = false;
     return;
   }
 
@@ -997,31 +1017,44 @@ async function sendPassword(){
     log(`SYSTEM :: 資料番号 [${pw}] 確認 → ダウンロード準備完了`);
     document.getElementById('passwordInput').value='';
     await showTempMessage('RESOURCE READY',`資料番号: ${pw}\nダウンロード準備完了`,'blue',1800);
+    isPasswordProcessing = false;
     return;
   }
 
   // サブミッションの答え
   const normalizedPw = normalize(pw);
-  // submissionAnswersは配列の配列なので、フラット化して正規化
-  const normalizedAnswers = submissionAnswers.flat().map(a => normalize(a));
-  if(normalizedAnswers.includes(normalizedPw)){
+  
+  // どのサブミッション番号かを特定
+  let submissionNumber = -1;
+  for(let i=0; i<submissionAnswers.length; i++){
+    const variants = submissionAnswers[i];
+    const normalizedVariants = variants.map(v => normalize(v));
+    if(normalizedVariants.includes(normalizedPw)){
+      submissionNumber = i + 1; // NO.1から始まるので+1
+      break;
+    }
+  }
+  
+  if(submissionNumber !== -1){
     if(solvedAnswers.has(normalizedPw)){
-      log(`SUBMISSION :: 「${pw}」 解読済み`);
+      log(`SUBMISSION :: NO.${submissionNumber} 「${pw}」 解読済み`);
       document.getElementById('passwordInput').value='';
-      await showTempMessage('ALREADY SOLVED','この資料は解読済みです','yellow');
+      await showTempMessage('ALREADY SOLVED',`NO.${submissionNumber} は解読済みです`,'yellow');
+      isPasswordProcessing = false;
     } else {
       solvedAnswers.add(normalizedPw);
       infoRate+=5;
       if(infoRate>100) infoRate=100;
       updateInfoRate();
       playInfoGetSound();
-      log(`SUBMISSION :: 「${pw}」 正解！ 情報取得率 +5% → ${infoRate}%`);
+      log(`SUBMISSION :: NO.${submissionNumber} 「${pw}」 正解！ 情報取得率 +5% → ${infoRate}%`);
       document.getElementById('passwordInput').value='';
-      await showTempMessage('CORRECT !',`情報取得率 ${infoRate}%`,'green');
+      await showTempMessage(`CORRECT ! NO.${submissionNumber}`,`情報取得率 ${infoRate}%`,'green');
       if(infoRate===100){
         await wait(800);
         await showTempMessage('MISSION COMPLETE','全資料 解読完了！','green',3000);
       }
+      isPasswordProcessing = false;
     }
     return;
   }
@@ -1030,6 +1063,7 @@ async function sendPassword(){
   log(`ERROR :: 「${pw}」 無効な入力`);
   document.getElementById('passwordInput').value='';
   await showTempMessage('ERROR','無効な入力です','red');
+  isPasswordProcessing = false;
 }
 </script>
 </body>
