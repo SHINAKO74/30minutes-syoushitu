@@ -163,10 +163,10 @@ const UNLOCK_PASSWORD = ['かいきん', '解禁', 'kaikin'];
 // 各答えは配列で、複数のバリエーションを許容
 const submissionAnswers = [
   ['rabo', 'らぼ'],  // NO.1
-  ['mail', 'めいる'],  // NO.2
+  ['mail', 'めーる', 'メール'],  // NO.2
   ['うちゅう', 'うちゆう', '宇宙'],  // NO.3
   ['かいしちてん', '開始地点'],  // NO.4
-  ['ゆうち', 'ゆうじ', '遊地', '遊治'],  // NO.5
+  ['ゆうち', 'ユウチ', '有地', '誘致', '勇知', '遊地', '遊治'],  // NO.5
   ['いへん', '異変'],  // NO.6
   ['ナトリウム', 'なとりうむ', 'natoriumu', 'na'],  // NO.7
   ['チェロ', 'ちぇろ', 'chero', 'cello'],  // NO.8
@@ -197,7 +197,7 @@ let intrusionTriggered = false;
 let commandLocked = false;
 let deviceRunning = false;
 let vaultOpen = false;
-let solvedAnswers = new Set();
+let solvedSubmissions = new Set(); // 解読済みサブミッション番号
 
 // タイマー警告フラグ
 let warned10min = false;
@@ -599,7 +599,7 @@ function updateDownloadStatus(){
 
 function updateInfoRate(){
   document.getElementById('infoRate').innerText=infoRate;
-  document.getElementById('solvedCount').innerText=solvedAnswers.size;
+  document.getElementById('solvedCount').innerText=solvedSubmissions.size;
 }
 
 async function showTempMessage(title,message,type='red',duration=2000){
@@ -1124,13 +1124,13 @@ async function sendPassword(){
   }
   
   if(submissionNumber !== -1){
-    if(solvedAnswers.has(normalizedPw)){
+    if(solvedSubmissions.has(submissionNumber)){
       log(`SUBMISSION :: NO.${submissionNumber} 「${pw}」 解読済み`);
       document.getElementById('passwordInput').value='';
       await showTempMessage('ALREADY SOLVED',`NO.${submissionNumber} は解読済みです`,'yellow');
       isPasswordProcessing = false;
     } else {
-      solvedAnswers.add(normalizedPw);
+      solvedSubmissions.add(submissionNumber);
       infoRate+=5;
       if(infoRate>100) infoRate=100;
       updateInfoRate();
