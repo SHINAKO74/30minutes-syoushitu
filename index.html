@@ -1136,7 +1136,8 @@ async function sendPassword(){
       if(infoRate>100) infoRate=100;
       updateInfoRate();
       playInfoGetSound();
-      log(`<span style="color:#4ade80">SUBMISSION :: NO.${submissionNumber} 「${pw}」 正解！ 情報取得率 +5% → ${infoRate}%</span>`);
+      log(`<span style="color:#4ade80">SUBMISSION :: NO.${submissionNumber}「${pw}」正解！</span>`);
+      log(`<span style="color:#4ade80">SUBMISSION :: 情報取得率+5%→${infoRate}%</span>`);
       document.getElementById('passwordInput').value='';
       await showTempMessage(`CORRECT ! NO.${submissionNumber}`,`情報取得率 ${infoRate}%`,'green');
       if(infoRate===100){
