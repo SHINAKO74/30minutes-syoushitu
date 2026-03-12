@@ -454,7 +454,7 @@ function log(msg){
   
   // SYSTEM :: や SUBMISSION :: などのプレフィックスを白色に
   let processedMsg = msg;
-  processedMsg = processedMsg.replace(/(SYSTEM|SUBMISSION|AUTH|SECURITY)\s*::/g, '<span style="color:#ffffff">$1 ::</span>');
+  processedMsg = processedMsg.replace(/(AUTH SUCCESS|SYSTEM STATUS|SYSTEM|SUBMISSION|AUTH|SECURITY)\s*::/g, '<span style="color:#ffffff">$1 ::</span>');
   
   box.innerHTML+=processedMsg+'<br>';
   box.scrollTop=box.scrollHeight;
@@ -1086,7 +1086,7 @@ async function sendPassword(){
   const normalizedUnlockPasswords = UNLOCK_PASSWORD.map(p => normalize(p));
   if(normalizedUnlockPasswords.includes(normalize(pw)) && commandLocked){
     setCommandLock(false);
-    log('AUTH SUCCESS :: コマンドロック解除');
+    log('<span style="color:#4ade80">AUTH SUCCESS :: コマンドロック解除</span>');
     document.getElementById('passwordInput').value='';
     await showTempMessage('UNLOCK SUCCESS','コマンドロック解除','green',2500);
     isPasswordProcessing = false;
