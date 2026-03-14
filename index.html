@@ -408,6 +408,65 @@ function playTimerWarningSound(){
   }
 }
 
+// 消失音
+function playDisappearanceSound(){
+  const now = audioCtx.currentTime;
+  
+  // 空間が歪むような超低周波ドローン
+  const o1=audioCtx.createOscillator(), g1=audioCtx.createGain();
+  o1.connect(g1); g1.connect(audioCtx.destination);
+  o1.type='sine';
+  o1.frequency.setValueAtTime(30, now);
+  o1.frequency.exponentialRampToValueAtTime(15, now+4);
+  g1.gain.setValueAtTime(0, now);
+  g1.gain.setValueAtTime(2.0, now+0.5);
+  g1.gain.setValueAtTime(2.0, now+3);
+  g1.gain.exponentialRampToValueAtTime(0.001, now+4);
+  o1.start(now); o1.stop(now+4);
+  
+  // 重低音のうねり
+  const o2=audioCtx.createOscillator(), g2=audioCtx.createGain();
+  o2.connect(g2); g2.connect(audioCtx.destination);
+  o2.type='sawtooth';
+  o2.frequency.setValueAtTime(60, now);
+  o2.frequency.setValueAtTime(45, now+2);
+  o2.frequency.exponentialRampToValueAtTime(20, now+4);
+  g2.gain.setValueAtTime(1.8, now);
+  g2.gain.setValueAtTime(1.8, now+3);
+  g2.gain.exponentialRampToValueAtTime(0.001, now+4);
+  o2.start(now); o2.stop(now+4);
+  
+  // 空間の歪み音（変調）
+  const o3=audioCtx.createOscillator(), g3=audioCtx.createGain();
+  o3.connect(g3); g3.connect(audioCtx.destination);
+  o3.type='triangle';
+  o3.frequency.setValueAtTime(3, now);
+  o3.frequency.setValueAtTime(7, now+2);
+  o3.frequency.setValueAtTime(2, now+4);
+  g3.gain.setValueAtTime(1.5, now);
+  g3.gain.exponentialRampToValueAtTime(0.001, now+4);
+  o3.start(now); o3.stop(now+4);
+  
+  // 重い衝撃音（消失の瞬間）
+  const o4=audioCtx.createOscillator(), g4=audioCtx.createGain();
+  o4.connect(g4); g4.connect(audioCtx.destination);
+  o4.type='square';
+  o4.frequency.value=80;
+  g4.gain.setValueAtTime(2.0, now);
+  g4.gain.exponentialRampToValueAtTime(0.001, now+0.5);
+  o4.start(now); o4.stop(now+0.5);
+  
+  // 余韻の衝撃音
+  const o5=audioCtx.createOscillator(), g5=audioCtx.createGain();
+  o5.connect(g5); g5.connect(audioCtx.destination);
+  o5.type='square';
+  o5.frequency.value=40;
+  g5.gain.setValueAtTime(0, now+1);
+  g5.gain.setValueAtTime(1.8, now+1.1);
+  g5.gain.exponentialRampToValueAtTime(0.001, now+2);
+  o5.start(now+1); o5.stop(now+2);
+}
+
 function playSirenSound(){
   const now=audioCtx.currentTime;
   // メインサイレン（より長く激しく）
@@ -514,11 +573,13 @@ function startTimer(){
       // END判定
       if(deviceRunning && deviceX===50 && deviceY===50){
         // END1「消失」: 装置が起動中 かつ 中央位置
+        playDisappearanceSound();
         document.getElementById('statusText').innerText='消失実行';
         log('SYSTEM :: 消失装置 作動 → 消失実行');
         await showTempMessage('!! 消失実行 !!','ラボごと消失 / GAME OVER','red',99999);
       } else if(deviceRunning && (deviceX!==50 || deviceY!==50) && radius===3){
         // END3「脱出」: 装置が起動中 かつ 中央以外 かつ 半径3m
+        playDisappearanceSound();
         document.getElementById('statusText').innerText='消失完了';
         log('SYSTEM :: ラボの一部が消失 → 脱出口が開く');
         await showTempMessage('!! 消失実行 !!','ラボの部分的消失を確認 / 侵入者の生存を確認','green',99999);
