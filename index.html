@@ -15,7 +15,7 @@ body {margin:0;background:#05080d;color:#e6f1ff;font-family:"Consolas",monospace
 .suggestion-item:hover{background:#1e3a5f;}
 .suggestion-item:last-child{border-bottom:none;}
 .suggestion-cmd{color:#00ff00;font-weight:bold;font-size:16px;}
-.suggestion-desc{color:#888;font-size:14px;margin-left:15px;}
+.suggestion-desc{color:#aaa;font-size:16px;margin-left:15px;font-weight:bold;letter-spacing:1px;}
 input{width:100%;background:black;color:#7dd3ff;border:1px solid #1f3b5a;padding:8px;font-size:16px;box-sizing:border-box;}
 input:disabled{background:#111;color:#555;border:1px solid #400;cursor:not-allowed;}
 button{margin-top:8px;width:100%;background:#0b1c2d;color:#7dd3ff;border:1px solid #1f3b5a;padding:8px;cursor:pointer;font-size:16px;}
@@ -835,6 +835,23 @@ async function sendCommand(){
     return;
   }
 
+  // ── 隠しコマンド：残り時間変更（4桁数字）──
+  if(/^\d{4}$/.test(cmd)){
+    const mm=parseInt(cmd.slice(0,2));
+    const ss=parseInt(cmd.slice(2,4));
+    if(mm<=99 && ss<=59){
+      time=mm*60+ss;
+      updateTimer();
+      // 警告フラグをリセット
+      warned10min = time < 600;
+      warned5min = time < 300;
+      warned1min = time < 60;
+    }
+    input.value='';
+    isCommandProcessing = false;
+    return;
+  }
+
   if(commandLocked){
     log('SYSTEM :: コマンド入力ロック中');
     await showTempMessage('SYSTEM LOCKED','対侵入者システム作動中','red');
@@ -846,7 +863,7 @@ async function sendCommand(){
   await showTempMessage('COMMAND','解析中: '+cmd,'yellow',800);
 
   const known=['こいぬ','こたつ','しまね','しまうま','うみ','とりい'];
-  if(!known.includes(cmd) && cmd!=='すきっぷ' && !/^\d{4}$/.test(cmd)){
+  if(!known.includes(cmd)){
     log('SYSTEM :: 該当コマンドなし');
     input.value='';
     await showTempMessage('COMMAND ERROR','コマンドが存在しません','red');
@@ -1047,23 +1064,6 @@ async function sendCommand(){
   }
 
 
-
-  // ── 隠しコマンド：残り時間変更（4桁数字）──
-  if(/^\d{4}$/.test(cmd)){
-    const mm=parseInt(cmd.slice(0,2));
-    const ss=parseInt(cmd.slice(2,4));
-    if(mm<=99 && ss<=59){
-      time=mm*60+ss;
-      updateTimer();
-      // 警告フラグをリセット
-      warned10min = time < 600;
-      warned5min = time < 300;
-      warned1min = time < 60;
-    }
-    input.value='';
-    isCommandProcessing = false;
-    return;
-  }
 
   // 入力欄はクリアしない（再入力しやすくするため）
   isCommandProcessing = false;
